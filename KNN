@@ -1,0 +1,28 @@
+from sklearn.neighbors import NearestNeighbors
+
+knn = NearestNeighbors(metric='cosine', algorithm='brute')
+
+knn.fit(df[["rating", "listen_count"]])
+
+# Fonction pour trouver les chansons les plus proches d'une chanson donnée
+def find_similar_songs(song_name):
+    # Trouver l'indice de la chanson donnée
+    index_for_song = df.index[df['title'] == song_name].tolist()[0]
+    # Recherche des voisins les plus proches pour la chanson donnée
+    distances, indices = knn.kneighbors(df[["rating", "listen_count"]].values[index_for_song].reshape(1, -1), n_neighbors=3)
+    # Indices des chansons similaires
+    sim_songs = indices.squeeze().tolist()
+    # Distances entre la chanson donnée et les chansons similaires
+    sim_distances = distances.squeeze().tolist()
+    # Affichage des résultats
+    print("Chanson donnée:", song_name)
+    print("Chansons les plus proches:")
+    for song, distance in zip(sim_songs, sim_distances):
+        if song != index_for_song:
+            song_name = df.iloc[song]['title']
+            print("Index:", song, ", Distance:", distance, ", Nom de la chanson:", song_name)
+
+# Demander à l'utilisateur de saisir le nom d'une chanson
+song_input = input("Entrez le nom de la chanson: ")
+find_similar_songs(song_input)
+
