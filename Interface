@@ -1,0 +1,52 @@
+import tkinter as tk
+from tkinter import ttk
+import pandas as pd
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+# Charger les données depuis un fichier CSV
+df = pd.read_csv(r"C:/Users/PC/Desktop/Copy.csv", low_memory=False)[:1000]
+df["data"] = df.apply(lambda value: " ".join(value.astype("str")), axis=1)
+
+# Vectorisation des données textuelles
+vectorizer = CountVectorizer()
+vectorized = vectorizer.fit_transform(df["data"])
+similarities = cosine_similarity(vectorized)
+
+# Création d'un DataFrame pour les similarités
+df_tmp = pd.DataFrame(similarities, columns=df["title"], index=df["title"]).reset_index()
+
+# Fonction de recommandation de chansons
+def recommend_songs():
+    input_song = user_entry.get()  
+    
+    if input_song in df_tmp.columns:
+        recommendation = df_tmp.nlargest(11, input_song).iloc[1:]["title"].tolist()
+        output_label.config(text="You should check out these songs:\n" + "\n".join(recommendation))
+    else:
+        output_label.config(text="Sorry, there is no song name in our database. Please try another one.")
+
+# Configuration de la fenêtre principale
+root = tk.Tk()
+root.title("Song Recommendation System")
+
+# Style personnalisé pour les éléments de l'interface
+style = ttk.Style()
+style.configure('TButton', font=('Arial', 12), foreground='#62b6cb', background='#cae9ff')  # Couleur dorée pour les boutons
+style.configure('TLabel', font=('Arial', 14), foreground='#468faf', background='#89c2d9')  # Couleur de fond gris clair pour les labels
+
+# Création des éléments de l'interface
+user_label = ttk.Label(root, text="Enter the name of the song:", style='TLabel')
+user_label.pack(padx=20, pady=10)
+
+user_entry = ttk.Entry(root, font=('Arial', 14))
+user_entry.pack(padx=20, pady=10)
+
+recommend_button = ttk.Button(root, text="Generate Recommendations", command=recommend_songs, style='TButton')
+recommend_button.pack(padx=20, pady=10)
+
+output_label = ttk.Label(root, text="", font=('Arial', 14), style='TLabel')
+output_label.pack(padx=20, pady=10)
+
+root.mainloop()
+
