@@ -1,0 +1,18 @@
+print("Avant nettoyage :\n", df)
+df['listen_count'] = pd.to_numeric(df['listen_count'], errors='coerce')
+df_cleaned = df.dropna(subset=['listen_count'])
+df_c=df_final.dropna(subset=['listen_count'])
+print("\nAprès nettoyage :\n", df_cleaned)
+print("\nAprès nettoyage :\n", df_c)
+
+summary_df = df_c.groupby('song_id').agg({'listen_count': ['mean', 'count']})
+summary_df.columns = ['average_count', 'play_freq']
+summary_df.head()
+
+def top_n_songs(data, n, min_playfreq = 100):
+  recommendations = data[data.play_freq > min_playfreq]
+  recommendations = recommendations.sort_values('average_count', ascending=False)
+  return recommendations.index[ :n]
+
+top_n_songs(summary_df, 10, 100)
+top_n_songs(summary_df, 5, 600)
