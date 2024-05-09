@@ -1,0 +1,137 @@
+!pip install surprise
+from surprise import accuracy
+from surprise.reader import Reader
+from surprise.dataset import Dataset
+from surprise.model_selection import GridSearchCV
+from surprise.model_selection import train_test_split
+from surprise.prediction_algorithms.knns import KNNBasic
+from surprise.model_selection import KFold
+from pandas.core.common import random_state
+
+# This Function takes a df, a user and a song they have heard and gives the play count
+def user_play_count(df, user, song):
+  plays = df_c[(df_c['user_id'] == user) & (df_c['song_id'] == song)].listen_count
+  if plays.empty:
+    print(f"No play count found for user {user} and song {song}")
+  else:
+    print(f"User play count for song: {song} is --> {int(plays)}")
+
+# This Function takes a df, a user and provides a list of songs that they have and have not listened to
+def has_heard_song(df, user, give_song_name, give_has_heard):
+  if give_song_name == False:
+    filter_column = 'song_id'
+  else:
+    filter_column = 'title'
+
+  has_heard = df_cleaned[df_cleaned['user_id'] == user][filter_column].unique()
+  hasnt_heard = df_cleaned[~(df_cleaned['user_id'] == user)][filter_column].unique()
+
+  # Run through the hasnt_heard and delete any instances of the has_heard
+  hasnt_heard = list(filter(lambda x: x not in has_heard, hasnt_heard))
+
+  if give_has_heard == True:
+    print(f'Songs User {user} has heard:\n\n {has_heard} \n\n')
+  else:
+    print(f'Songs User {user} has not heard:\n\n {hasnt_heard}\n\n')
+
+# The function to calulate the RMSE, precision@k, recall@k, and F_1 score
+def precision_recall_at_k(model, k = 30, threshold = 1.5):
+    """Return precision and recall at k metrics for each user"""
+    user_est_true = defaultdict(list)
+
+    predictions=model.test(testset)
+
+    for uid, _, true_r, est, _ in predictions:
+        user_est_true[uid].append((est, true_r))
+
+    precisions = dict()
+    recalls = dict()
+    for uid, user_ratings in user_est_true.items():
+
+        user_ratings.sort(key = lambda x : x[0], reverse = True)
+        n_rel = sum((true_r >= threshold) for (_, true_r) in user_ratings)
+        n_rec_k = sum((est >= threshold) for (est, _) in user_ratings[ : k])
+        n_rel_and_rec_k = sum(((true_r >= threshold) and (est >= threshold))
+                              for (est, true_r) in user_ratings[ : k])
+
+        precisions[uid] = n_rel_and_rec_k / n_rec_k if n_rec_k != 0 else 0
+
+        recalls[uid] = n_rel_and_rec_k / n_rel if n_rel != 0 else 0
+
+    precision = round((sum(prec for prec in precisions.values()) / len(precisions)), 3)
+    recall = round((sum(rec for rec in recalls.values()) / len(recalls)), 3)
+    accuracy.rmse(predictions)
+
+    print('Precision: ', precision)
+    print('Recall: ', recall)
+    print('F_1 score: ', round((2 * precision * recall) / (precision + recall), 3))
+
+# Describe summary_df
+summary_df.describe().round(1).T
+
+reader = Reader(rating_scale = (0,4))
+data = Dataset.load_from_df(df_c[["user_id","song_id", "listen_count"]], reader)
+trainset, testset = train_test_split(data, test_size = 0.4, random_state = 42)
+
+sim_options = {'name': 'cosine','user-based': True}
+sim_user_user = KNNBasic(sim_options= sim_options, verbose = False, random_state = 1)
+sim_user_user.fit(trainset)
+precision_recall_at_k(sim_user_user)
+
+# Get songs user 6958 has listen to
+has_heard_song(df_c, 6958, False, True)
+# Get songs user 6958 has not listen to
+has_heard_song(df_c, 6958, False, False)
+
+# Get play count for song 1671
+user_play_count(df_c, 6958, 1671 )
+
+sim_user_user.predict(6958, 1671 , r_ui= 2, verbose = True)
+
+df_cleaned.to_csv('dataset_nettoye.csv', index=False)
+
+param_grid = {'k': [10, 20, 30, 40],
+              'min_k': [3, 6, 9],
+              'sim_options': {'name': ['msd', "cosine", 'pearson', "pearson_baseline"],
+                              'user_based': [True],
+                              "min_support": [2, 4]}
+              }
+gs = GridSearchCV(KNNBasic, param_grid, measures = ['rmse'], cv = 3, n_jobs = -1)
+gs.fit(data)
+
+print(gs.best_score['rmse'])
+print(gs.best_params['rmse'])
+
+sim_options = {'name': 'pearson_baseline',
+               'user_based': True,
+               'min_support': 2}
+
+sim_user_user_optimized = KNNBasic(sim_options = sim_options, k = 40, min_k = 9, random_state = 1, verbose = False)
+sim_user_user_optimized.fit(trainset)
+precision_recall_at_k(sim_user_user_optimized)
+
+def get_recommendations(data, user_id, top_n, algo):
+  recommendations = []
+  user_item_interactions_matrix = data.pivot(index = 'user_id', columns = 'song_id', values = 'listen_count')
+  non_interacted_products = user_item_interactions_matrix.loc[user_id][user_item_interactions_matrix.loc[user_id].isnull()].index.tolist()
+  for item_id in non_interacted_products:
+     est = algo.predict(user_id, item_id).est
+     recommendations.append((item_id, est))
+  recommendations.sort(key = lambda x: x[1], reverse = True)
+  return recommendations[:top_n]
+
+# Make top 5 recommendations for any user_id with a similarity-based recommendation engine
+recommendations = get_recommendations(df_c, 6958, 5, sim_user_user_optimized)
+
+pd.DataFrame(recommendations, columns = ['song_id', 'predicted_playcount'])
+
+def ranking_songs(recommendations, final_rating):
+  ranked_products = final_rating.loc[[items[0] for items in recommendations]].sort_values('play_freq', ascending = False)
+                                   [['play_freq']].reset_index()
+  ranked_products = ranked_products.merge(pd.DataFrame(recommendations, columns = ['song_id', 'predicted_playcount']),
+                                          on = 'song_id', how = 'inner')
+  ranked_products['corrected_playcount'] = ranked_products['predicted_playcount'] - 1 / np.sqrt(ranked_products['play_freq'])
+  ranked_products = ranked_products.sort_values('corrected_playcount', ascending = False)
+  return ranked_products
+ranking_songs(recommendations, summary_df)
+
