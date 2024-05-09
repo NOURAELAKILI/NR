@@ -16,7 +16,7 @@ df['rating'] = np.random.randint(1, 6, size=len(df))
 df = pd.DataFrame(df)
 df
 
-TRAITEMENT DE DONNEES :
+MANIPULATION DE DONNEES :
 
 from sklearn.preprocessing import LabelEncoder
 le = LabelEncoder()
